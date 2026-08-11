@@ -41,7 +41,7 @@ function isValidUserName(name) {
 
 function isValidSiteName(name) {
   return name is string
-      && name in ['원효', '1반', '2반', '3반', '운전1반', '운전2반'];
+      && name in ['사무실', '1반', '2반', '3반', '운전1반', '운전2반', '기동반', '원효'];
 }
 
 function isValidCoordinate(lat, lng) {

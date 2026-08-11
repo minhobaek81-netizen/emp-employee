@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { ALLOWED_RADIUS_M, SITES } from "@/lib/sites";
+import { ALLOWED_RADIUS_M, SITES, getSiteByName, resolveSiteName } from "@/lib/sites";
 const COOLDOWN_MS = 60 * 1000;
 
 const STORAGE_KEYS = {
@@ -39,10 +39,6 @@ function getCurrentPosition() {
   });
 }
 
-function getSiteByName(name) {
-  return SITES.find((site) => site.name === name) ?? null;
-}
-
 export default function Home() {
   const [isReady, setIsReady] = useState(false);
   const [userName, setUserName] = useState("");
@@ -61,11 +57,15 @@ export default function Home() {
   useEffect(() => {
     const savedName = localStorage.getItem(STORAGE_KEYS.userName);
     const savedSite = localStorage.getItem(STORAGE_KEYS.siteName);
+    const resolvedSite = savedSite ? resolveSiteName(savedSite) : "";
 
-    if (savedName && savedSite && getSiteByName(savedSite)) {
+    if (savedName && resolvedSite && getSiteByName(resolvedSite)) {
       setUserName(savedName);
-      setSiteName(savedSite);
+      setSiteName(resolvedSite);
       setIsRegistered(true);
+      if (savedSite !== resolvedSite) {
+        localStorage.setItem(STORAGE_KEYS.siteName, resolvedSite);
+      }
     }
 
     setIsReady(true);
