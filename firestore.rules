@@ -1,0 +1,54 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /attendance_logs/{logId} {
+      allow create: if isValidAttendanceLog(request.resource.data);
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+function isValidAttendanceLog(data) {
+  return data.keys().hasOnly([
+        'userName',
+        'siteName',
+        'type',
+        'lat',
+        'lng',
+        'distance',
+        'createdAt',
+      ])
+      && isValidUserName(data.userName)
+      && isValidSiteName(data.siteName)
+      && data.type in ['CHECK_IN', 'CHECK_OUT']
+      && isValidCoordinate(data.lat, data.lng)
+      && data.distance is number
+      && data.distance >= 0
+      && data.distance <= 150
+      && data.createdAt == request.time;
+}
+
+function isValidUserName(name) {
+  return name is string
+      && name.size() > 0
+      && name.size() <= 50;
+}
+
+function isValidSiteName(name) {
+  return name is string
+      && name in ['원효', '1반', '2반', '3반', '운전1반', '운전2반'];
+}
+
+function isValidCoordinate(lat, lng) {
+  return lat is number
+      && lng is number
+      && lat >= 37.4
+      && lat <= 37.7
+      && lng >= 126.8
+      && lng <= 127.2;
+}
