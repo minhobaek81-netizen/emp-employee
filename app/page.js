@@ -282,6 +282,7 @@ export default function Home() {
         >
           {processingType === "CHECK_IN" ? "처리 중..." : "출근하기"}
         </button>
+        <div className="action-gap" aria-hidden="true" />
         <button
           type="button"
           className="btn btn-check-out"
