@@ -3,8 +3,16 @@
 import { useEffect, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { ALLOWED_RADIUS_M, SITES, getSiteByName, resolveSiteName } from "@/lib/sites";
+import {
+  ALLOWED_RADIUS_M,
+  SITES,
+  findNearestSiteWithinRadius,
+  getDistanceToSite,
+  getSiteByName,
+  resolveSiteName,
+} from "@/lib/sites";
 const COOLDOWN_MS = 60 * 1000;
+const LOCATION_POLL_MS = 15 * 1000;
 
 const STORAGE_KEYS = {
   userName: "emp_userName",
@@ -12,18 +20,6 @@ const STORAGE_KEYS = {
   lastCheckIn: "emp_lastCheckIn",
   lastCheckOut: "emp_lastCheckOut",
 };
-
-function getDistanceMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
 
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -37,6 +33,19 @@ function getCurrentPosition() {
       maximumAge: 0,
     });
   });
+}
+
+async function refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName) {
+  try {
+    const position = await getCurrentPosition();
+    const { latitude: lat, longitude: lng } = position.coords;
+    const match = findNearestSiteWithinRadius(lat, lng);
+    setCanCheckOut(Boolean(match));
+    setCheckOutSiteName(match?.site.name ?? null);
+  } catch {
+    setCanCheckOut(false);
+    setCheckOutSiteName(null);
+  }
 }
 
 export default function Home() {
@@ -53,6 +62,8 @@ export default function Home() {
 
   const [processingType, setProcessingType] = useState(null);
   const [alert, setAlert] = useState(null);
+  const [canCheckOut, setCanCheckOut] = useState(false);
+  const [checkOutSiteName, setCheckOutSiteName] = useState(null);
 
   useEffect(() => {
     const savedName = localStorage.getItem(STORAGE_KEYS.userName);
@@ -70,6 +81,26 @@ export default function Home() {
 
     setIsReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!isRegistered) return undefined;
+
+    const update = () => {
+      void refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName);
+    };
+
+    update();
+    const intervalId = window.setInterval(update, LOCATION_POLL_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") update();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [isRegistered]);
 
   const showAlert = (message) => setAlert(message);
   const closeAlert = () => setAlert(null);
@@ -121,21 +152,35 @@ export default function Home() {
     setProcessingType(type);
 
     try {
-      const site = getSiteByName(siteName);
-      if (!site) {
-        showAlert("출근 장소를 다시 선택해 주세요.");
-        return;
-      }
-
       const position = await getCurrentPosition();
       const { latitude: lat, longitude: lng } = position.coords;
-      const distance = getDistanceMeters(lat, lng, site.lat, site.lng);
 
-      if (distance > ALLOWED_RADIUS_M) {
-        showAlert(
-          `현장(${site.name})에서 ${Math.round(distance)}m 떨어져 있습니다.\n${ALLOWED_RADIUS_M}m 이내에서만 출퇴근할 수 있습니다.`
-        );
-        return;
+      let site;
+      let distance;
+
+      if (type === "CHECK_OUT") {
+        const match = findNearestSiteWithinRadius(lat, lng);
+        if (!match) {
+          showAlert(
+            `휴게실 ${ALLOWED_RADIUS_M}m 이내에서만 퇴근할 수 있습니다.\nGPS 위치를 확인해 주세요.`
+          );
+          return;
+        }
+        site = match.site;
+        distance = match.distance;
+      } else {
+        site = getSiteByName(siteName);
+        if (!site) {
+          showAlert("출근 장소를 다시 선택해 주세요.");
+          return;
+        }
+        distance = getDistanceToSite(lat, lng, site.name);
+        if (distance === null || distance > ALLOWED_RADIUS_M) {
+          showAlert(
+            `현장(${site.name})에서 ${Math.round(distance ?? 0)}m 떨어져 있습니다.\n${ALLOWED_RADIUS_M}m 이내에서만 출근할 수 있습니다.`
+          );
+          return;
+        }
       }
 
       await addDoc(collection(db, "attendance_logs"), {
@@ -149,7 +194,12 @@ export default function Home() {
       });
 
       localStorage.setItem(storageKey, String(Date.now()));
-      showAlert(type === "CHECK_IN" ? "출근 처리되었습니다." : "퇴근 처리되었습니다.");
+      if (type === "CHECK_OUT") {
+        showAlert(`${site.name}에서 퇴근 처리되었습니다.`);
+        void refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName);
+      } else {
+        showAlert("출근 처리되었습니다.");
+      }
     } catch (error) {
       const message =
         error.code === 1
@@ -269,7 +319,15 @@ export default function Home() {
           </select>
         </div>
         {selectedSite && (
-          <p className="site-hint">반경 {ALLOWED_RADIUS_M}m 이내에서만 출퇴근 가능</p>
+          <>
+            <p className="site-hint">
+              출근: 선택한 「{siteName}」 {ALLOWED_RADIUS_M}m 이내
+            </p>
+            <p className="site-hint">
+              퇴근: 모든 휴게실 {ALLOWED_RADIUS_M}m 이내
+              {checkOutSiteName ? ` · 현재 ${checkOutSiteName} 근처` : ""}
+            </p>
+          </>
         )}
       </header>
 
@@ -286,10 +344,14 @@ export default function Home() {
         <button
           type="button"
           className="btn btn-check-out"
-          disabled={processingType !== null}
+          disabled={processingType !== null || !canCheckOut}
           onClick={() => handleAttendance("CHECK_OUT")}
         >
-          {processingType === "CHECK_OUT" ? "처리 중..." : "퇴근하기"}
+          {processingType === "CHECK_OUT"
+            ? "처리 중..."
+            : canCheckOut
+              ? "퇴근하기"
+              : "휴게실 근처에서 퇴근 가능"}
         </button>
       </section>
 
