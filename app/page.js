@@ -35,16 +35,14 @@ function getCurrentPosition() {
   });
 }
 
-async function refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName) {
+async function refreshCheckOutEligibility(setCanCheckOut) {
   try {
     const position = await getCurrentPosition();
     const { latitude: lat, longitude: lng } = position.coords;
     const match = findNearestSiteWithinRadius(lat, lng);
     setCanCheckOut(Boolean(match));
-    setCheckOutSiteName(match?.site.name ?? null);
   } catch {
     setCanCheckOut(false);
-    setCheckOutSiteName(null);
   }
 }
 
@@ -63,7 +61,6 @@ export default function Home() {
   const [processingType, setProcessingType] = useState(null);
   const [alert, setAlert] = useState(null);
   const [canCheckOut, setCanCheckOut] = useState(false);
-  const [checkOutSiteName, setCheckOutSiteName] = useState(null);
 
   useEffect(() => {
     const savedName = localStorage.getItem(STORAGE_KEYS.userName);
@@ -86,7 +83,7 @@ export default function Home() {
     if (!isRegistered) return undefined;
 
     const update = () => {
-      void refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName);
+      void refreshCheckOutEligibility(setCanCheckOut);
     };
 
     update();
@@ -196,7 +193,7 @@ export default function Home() {
       localStorage.setItem(storageKey, String(Date.now()));
       if (type === "CHECK_OUT") {
         showAlert(`${site.name}에서 퇴근 처리되었습니다.`);
-        void refreshCheckOutEligibility(setCanCheckOut, setCheckOutSiteName);
+        void refreshCheckOutEligibility(setCanCheckOut);
       } else {
         showAlert("출근 처리되었습니다.");
       }
@@ -261,8 +258,6 @@ export default function Home() {
     );
   }
 
-  const selectedSite = getSiteByName(siteName);
-
   return (
     <main className="app-container">
       <header className="profile-header">
@@ -318,17 +313,7 @@ export default function Home() {
             ))}
           </select>
         </div>
-        {selectedSite && (
-          <>
-            <p className="site-hint">
-              출근: 선택한 「{siteName}」 {ALLOWED_RADIUS_M}m 이내
-            </p>
-            <p className="site-hint">
-              퇴근: 모든 휴게실 {ALLOWED_RADIUS_M}m 이내
-              {checkOutSiteName ? ` · 현재 ${checkOutSiteName} 근처` : ""}
-            </p>
-          </>
-        )}
+        <p className="site-hint">휴게실 100m 이내에서 버튼 활성화</p>
       </header>
 
       <section className="action-section">
