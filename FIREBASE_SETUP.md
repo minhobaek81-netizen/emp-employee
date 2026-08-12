@@ -71,6 +71,7 @@ npm run firebase:deploy:rules
 | `attendance_logs` 문서 생성 | 허용 (스키마 검증 통과 시) |
 | `attendance_logs` 읽기 | 허용 (직원관리앱 조회용) |
 | `attendance_logs` 수정/삭제 | 차단 (Console·Admin SDK만 가능) |
+| `attendance_adjustments` 읽기/쓰기 | 허용 (직원관리앱 출퇴근·휴가 수정) |
 | 기타 컬렉션 | 전부 차단 |
 
 생성 시 서버에서 검증하는 항목:

@@ -8,6 +8,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    /** 직원관리앱 — 출퇴근/휴가 수동 수정 */
+    match /attendance_adjustments/{docId} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
