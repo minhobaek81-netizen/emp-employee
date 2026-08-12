@@ -4,7 +4,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /attendance_logs/{logId} {
       allow create: if isValidAttendanceLog(request.resource.data);
-      allow read, update, delete: if false;
+      allow read: if true;
+      allow update, delete: if false;
     }
 
     match /{document=**} {
